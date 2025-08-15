@@ -1,91 +1,79 @@
 import yfinance as yf
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sb
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
 from xgboost import XGBClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import accuracy_score, classification_report
-from transformers import pipeline
+from sklearn.metrics import ConfusionMatrixDisplay, roc_auc_score
+from sklearn.utils import resample
 
-# 1. Download stock data
-df = yf.download("AAPL", start="2020-01-01", end="2024-12-31")
+# ===== Step 1: Download & preprocess =====
+df = yf.download("AAPL", start="2018-01-01", end="2025-01-01")
+df.columns = df.columns.get_level_values(0)
 
-# 2. Target column: 1 if price goes up next day, else 0
-df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
+df['day'] = df.index.day
+df['month'] = df.index.month
+df['year'] = df.index.year
+df['is_quarter_end'] = np.where(df['month']%3==0, 1, 0)
 
-# 3. Technical Indicators
-df['SMA_10'] = df['Close'].rolling(window=10).mean()
+# Features
+df['open-close'] = df['Open'] - df['Close']
+df['low-high'] = df['Low'] - df['High']
+df['target'] = np.where(df['Close'].shift(-1) > df['Close'], 1, 0)
 
-def compute_rsi(data, window=14):
-    delta = data.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(window=window).mean()
-    avg_loss = loss.rolling(window=window).mean()
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
+# ===== Step 2: Check imbalance =====
+plt.pie(df['target'].value_counts(), labels=df['target'].value_counts().index, autopct='%1.1f%%')
+plt.title("Class Distribution Before Balancing")
+plt.show()
 
-df['RSI_14'] = compute_rsi(df['Close'])
-
-# MACD
-ema_12 = df['Close'].ewm(span=12, adjust=False).mean()
-ema_26 = df['Close'].ewm(span=26, adjust=False).mean()
-df['MACD'] = ema_12 - ema_26
-
-# Calculate EMA 20
-df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
-
-# Correct way to get rolling std as a Series
-df['Rolling_STD_20'] = df['Close'].rolling(window=20).std()
-
-# Bollinger Bands
-df['BB_upper'] = df['EMA_20'] + 2 * df['Rolling_STD_20']
-df['BB_lower'] = df['EMA_20'] - 2 * df['Rolling_STD_20']
-
-
-# Drop rows with NaNs created by rolling/EMA
+# Drop NaN from shift
 df.dropna(inplace=True)
 
-# 4. Feature selection
-features = ['SMA_10', 'RSI_14', 'MACD', 'Volume', 'BB_upper', 'BB_lower']
-X = df[features]
-y = df['Target']
+# ===== Step 3: Balance dataset =====
+df_majority = df[df['target'] == 1]
+df_minority = df[df['target'] == 0]
 
-# 5. Time-based split
-split_index = int(0.8 * len(df))
-X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
+df_minority_upsampled = resample(df_minority, 
+                                 replace=True, 
+                                 n_samples=len(df_majority), 
+                                 random_state=42)
 
-# 6. Train RandomForest
-rf_model = RandomForestClassifier(random_state=42)
-rf_model.fit(X_train, y_train)
-y_pred_rf = rf_model.predict(X_test)
+df_balanced = pd.concat([df_majority, df_minority_upsampled])
 
-print("🔍 Random Forest Accuracy:", accuracy_score(y_test, y_pred_rf))
-print(classification_report(y_test, y_pred_rf))
+# Shuffle the balanced dataset
+df_balanced = df_balanced.sample(frac=1, random_state=42)
 
-# 7. Train XGBoost
-xgb_model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42)
-xgb_model.fit(X_train, y_train)
-y_pred_xgb = xgb_model.predict(X_test)
+# ===== Step 4: Features & scaling =====
+features = df_balanced[['open-close', 'low-high', 'is_quarter_end']]
+target = df_balanced['target']
 
-print("🚀 XGBoost Accuracy:", accuracy_score(y_test, y_pred_xgb))
-print(classification_report(y_test, y_pred_xgb))
+scaler = StandardScaler()
+features = scaler.fit_transform(features)
 
-# 8. Hyperparameter tuning for XGBoost
-param_grid = {
-    'n_estimators': [100, 200],
-    'max_depth': [3, 5, 7],
-    'learning_rate': [0.01, 0.1]
-}
+X_train, X_valid, Y_train, Y_valid = train_test_split(
+    features, target, test_size=0.1, random_state=2022
+)
 
-grid = GridSearchCV(XGBClassifier(eval_metric='logloss'), param_grid, cv=3, scoring='accuracy', verbose=1)
-grid.fit(X_train, y_train)
+# ===== Step 5: Train models =====
+models = [
+    LogisticRegression(),
+    SVC(kernel='poly', probability=True),
+    XGBClassifier(use_label_encoder=False, eval_metric='logloss')
+]
 
-print("✅ Best XGBoost Params:", grid.best_params_)
-print("📈 Best CV Score:", grid.best_score_)
+for model in models:
+    model.fit(X_train, Y_train)
+    print(f'{model.__class__.__name__}:')
+    print('Training ROC-AUC:', roc_auc_score(Y_train, model.predict_proba(X_train)[:, 1]))
+    print('Validation ROC-AUC:', roc_auc_score(Y_valid, model.predict_proba(X_valid)[:, 1]))
+    print()
 
-# 9. Sentiment Analysis
-sentiment_pipeline = pipeline("sentiment-analysis", model="ProsusAI/finbert")
-headline = "Apple beats quarterly earnings expectations"
-sentiment = sentiment_pipeline(headline)
-print("📰 Headline Sentiment:", sentiment)
+# ===== Step 6: Confusion Matrix for LogisticRegression =====
+ConfusionMatrixDisplay.from_estimator(models[0], X_valid, Y_valid)
+plt.title("Confusion Matrix - Logistic Regression (Balanced Data)")
+plt.show()
