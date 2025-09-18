@@ -1,5 +1,5 @@
-# 📈 Stock Price Movement Prediction Project --P1  
-
+# 📈 Stock Price Movement Prediction Project  
+---
 ## **Project Overview**  
 
 **Project Title**: Stock Price Movement Prediction (AAPL)  
@@ -7,7 +7,6 @@
 
 This project demonstrates the implementation of a machine learning pipeline for predicting **next-day stock price movement**. It includes data collection, exploratory data analysis (EDA), feature engineering, model training, and evaluation using various ML models.  
 
-![Stock_project](https://github.com/yourusername/Stock-Price-Movement-Prediction/blob/main/stock.jpg)  
 
 ---
 
