@@ -1,71 +1,132 @@
-# Stock-Price-Movement-Prediction-using-News-Sentiment-and-Technical-Indicators
+📈 Stock Price Movement Prediction Project --P1
+Project Overview
 
-main.py file 
-1️⃣ Checked class imbalance
+Project Title: Stock Price Movement Prediction (AAPL)
+Dataset: Yahoo Finance – Apple Inc. (AAPL) historical OHLCV data
 
-I added this to visually confirm the imbalance in your target labels:
+This project demonstrates the implementation of a machine learning pipeline for predicting next-day stock price movement. It includes data collection, exploratory data analysis (EDA), feature engineering, model training, and evaluation using various ML models.
 
-plt.pie(df['target'].value_counts(), 
-        labels=df['target'].value_counts().index, 
-        autopct='%1.1f%%')
-plt.title("Class Distribution Before Balancing")
+Objectives
+
+Collect and Preprocess Data: Download stock price data (Open, High, Low, Close, Volume) using Yahoo Finance API.
+
+Exploratory Data Analysis (EDA): Perform statistical analysis and visualize patterns in the data.
+
+Feature Engineering: Create additional features like Open-Close difference, High-Low spread, quarter-end flag, etc.
+
+Target Creation: Generate binary target variable for next-day price movement (Up = 1, Down = 0).
+
+Model Development: Train and evaluate classification models (Logistic Regression, SVM, XGBoost).
+
+Evaluation Metrics: Assess models using ROC-AUC scores, confusion matrix, and visualization.
+
+Project Structure
+1. Data Collection & Preprocessing
+
+Data Source: yfinance API (2018–2025 AAPL stock data)
+
+Preprocessing Steps:
+
+Removed hierarchical column structure
+
+Checked for missing values
+
+Extracted day, month, year
+
+Created target variable for stock movement
+
+df = yf.download("AAPL", start="2018-01-01", end="2025-01-01")
+df['open-close'] = df['Open'] - df['Close']
+df['low-high'] = df['Low'] - df['High']
+df['target'] = np.where(df['Close'].shift(-1) > df['Close'], 1, 0)
+
+2. Exploratory Data Analysis (EDA)
+
+Line Plot: Closing price trend over time
+
+Histograms & Boxplots: Distribution of OHLCV features
+
+Correlation Heatmap: Identified highly correlated features
+
+Target Balance: Checked distribution of upward vs downward movements
+
+Example:
+
+plt.figure(figsize=(15,5))
+plt.plot(df['Close'])
+plt.title('Apple Close price.', fontsize=15)
+plt.ylabel('Price in dollars.')
 plt.show()
 
+3. Feature Engineering
 
-This showed that class 1 (up) was much more frequent than class 0 (down).
+Added date-related features (day, month, year, quarter-end flag).
 
-2️⃣ Dropped NaNs from shift(-1)
+Created financial indicators:
 
-Your original target creation left the last row with NaN.
+open-close (daily return strength)
 
-df.dropna(inplace=True)
+low-high (intraday volatility)
 
-3️⃣ Balanced the dataset with oversampling
+Constructed target variable:
 
-Instead of training on the imbalanced data, I upsampled the minority class (class 0) to have the same number of samples as the majority class.
+1 → Next day close > current close
 
-from sklearn.utils import resample
+0 → Next day close ≤ current close
 
-df_majority = df[df['target'] == 1]
-df_minority = df[df['target'] == 0]
+4. Model Development
 
-df_minority_upsampled = resample(
-    df_minority, 
-    replace=True, 
-    n_samples=len(df_majority), 
-    random_state=42
-)
+Trained three classification models:
 
-df_balanced = pd.concat([df_majority, df_minority_upsampled])
-df_balanced = df_balanced.sample(frac=1, random_state=42)  # shuffle
+models = [
+    LogisticRegression(),
+    SVC(kernel='poly', probability=True),
+    XGBClassifier()
+]
 
-4️⃣ Trained models on balanced data
+5. Evaluation & Results
 
-I replaced your original features and target definitions so they came from the balanced dataset instead of the original:
+Metric Used: ROC-AUC Score
 
-features = df_balanced[['open-close', 'low-high', 'is_quarter_end']]
-target = df_balanced['target']
+Model	Train AUC	Validation AUC
+Logistic Regression	0.51	0.48
+SVC (Polynomial Kernel)	0.52	0.45
+XGBoost Classifier	0.96	0.55
 
-5️⃣ Kept the rest of your training code the same
+Best Model: ✅ XGBoost, though validation performance indicates room for improvement.
 
-I still used:
+Confusion Matrix was also plotted for classification insights.
 
-Logistic Regression
+6. Future Improvements
 
-SVC (poly)
+Add technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands).
 
-ipynb file:
-We’ll likely see a strong imbalance — most values are 1 because over the last years, Apple’s price has generally gone up more often than down (daily data).
-If, for example, 85–90% of days are "up" (1), then predicting always 1 gives you:
+Apply hyperparameter tuning (GridSearchCV, Bayesian optimization).
 
-High ROC-AUC (because probabilities align with imbalance)
+Incorporate sentiment analysis from news & social media.
 
-Confusion matrix like yours (no true negatives)
+Explore deep learning models (LSTM, GRU) for time-series prediction.
 
+Perform feature importance analysis for better interpretability.
 
-XGBClassifier
+Advanced Tasks
 
-But now all models trained on equal numbers of up and down days, so the confusion matrix is no longer biased toward 1.
+✅ Feature scaling using StandardScaler
 
-✅ Key takeaway:
-The main change was balancing the dataset before training, which forced the model to learn patterns for both classes instead of just guessing “up” every time.
+✅ Yearly grouped analysis of OHLC trends
+
+✅ Pie chart for class balance check
+
+✅ CTAS-like approach: Derived new features from raw OHLC data for modeling
+
+Reports
+
+EDA Plots: Close price trend, OHLC histograms, boxplots
+
+Target Balance: Distribution of up vs down movements
+
+Model Comparison: ROC-AUC results across ML models
+
+Conclusion
+
+This project demonstrates how machine learning can be applied to financial market prediction using historical stock price data. Although initial results (AUC ≈ 0.55 with XGBoost) are modest, incorporating technical indicators, sentiment data, and advanced models will significantly enhance predictive power.
